@@ -19,8 +19,8 @@ class Agent:
     def to(self, device):
         pass
 
-    def __init__(self, player_id: int):
-        self.player_id = player_id
+    def __init__(self, side: int):
+        self.side = side
         # Initialize home_planet and enemy_planet as None
         # They will be set on the first call to get_action and never changed again
         self.home_planet = None
@@ -383,9 +383,10 @@ def get_defense_action(obs: dict, idx: int, home_planet: tuple) -> list[int]:
         choice = shoot_enemy_if_in_range(enemy, ship)
         if choice:
             return choice
-        
-    if ship[3] <= 30:
-        return return_home_on_low_hp(ship, home_planet[0], home_planet[1])
+
+    target_occupation = 0 if home_planet[0] == 9 else 100
+    if ship[3] <= 30 or home_planet[2] != target_occupation:
+        return return_home(ship, home_planet[0], home_planet[1])
 
     return move_randomly_around_home(obs, ship, home_planet[0], home_planet[1])
 
