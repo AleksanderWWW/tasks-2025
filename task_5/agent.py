@@ -15,8 +15,8 @@ class Agent:
     def to(self, device):
         pass
 
-    def __init__(self, player_id: int):
-        self.player_id = player_id
+    def __init__(self, side: int):
+        self.side = side
         # Initialize home_planet and enemy_planet as None
         # They will be set on the first call to get_action and never changed again
         self.home_planet = None

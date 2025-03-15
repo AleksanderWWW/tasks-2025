@@ -1,12 +1,11 @@
 # Skeleton for Agent class
 
 class Agent:
-    def __init__(self, player_id: int):
+    def __init__(self, side: int):
         """
-        Args:
-            player_id: Indicates whether agent is player 0 or player 1 in game.
+        :param side: Indicates whether the player is on left side (0) or right side (1)
         """
-        self.player_id = player_id
+        self.side = side
 
     def get_action(self, obs: dict) -> dict:
         """
