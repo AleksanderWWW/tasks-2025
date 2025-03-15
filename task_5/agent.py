@@ -468,7 +468,7 @@ def move_randomly_around_home(obs : dict, ship, home_x, home_y, max_distance=15)
     return [ship[0], 0, direction, 1] 
 
 
-def return_home_on_low_hp(ship, home_x, home_y) -> list[int]:
+def return_home(ship, home_x, home_y) -> list[int]:
     dx = ship[1] - home_x
     dy = ship[2] - home_y
 
