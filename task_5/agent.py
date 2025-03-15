@@ -213,8 +213,9 @@ def get_defense_action(obs: dict, idx: int, home_planet: tuple) -> list[int]:
         choice = shoot_enemy_if_in_range(enemy, ship)
         if choice:
             return choice
-        
-    if ship[3] <= 30 or home_planet[2] != 0:
+
+    target_occupation = 0 if home_planet[0] == 9 else 100
+    if ship[3] <= 30 or home_planet[2] != target_occupation:
         return return_home(ship, home_planet[0], home_planet[1])
 
     return move_randomly_around_home(obs, ship, home_planet[0], home_planet[1])
