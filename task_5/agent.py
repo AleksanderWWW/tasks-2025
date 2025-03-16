@@ -11,11 +11,12 @@ ROLE_DEFEND = "defend"
 
 def with_emergency_return(func):
     def inner(obs: dict, idx: int, home_planet: tuple, *args, **kwargs):
-        ship = obs["allied_ships"][idx]
-        if home_planet[0] == 9 and home_planet[2] != 0:
+        ship = obs["allied_ships_dict"][idx]
+        home_occupation = obs["planets_occupation"][0][2]
+        if home_planet[0] == 9 and home_occupation != 0:
             return return_home(ship, home_planet[0], home_planet[1])
 
-        if home_planet[0] == 90 and home_planet[2] != 100:
+        if home_planet[0] == 90 and home_occupation != 100:
             return return_home(ship, home_planet[0], home_planet[1])
 
         return func(obs, idx, home_planet, *args, **kwargs)
@@ -193,7 +194,7 @@ class Agent:
             # Count the current distribution of roles
             current_role = self.ship_roles[ship_id]
             role_counts[current_role] = role_counts.get(current_role, 0) + 1
-            print(role_counts)
+            # print(role_counts)
         
         # Step 2: Dynamic role reassignment based on game conditions
         
@@ -269,7 +270,7 @@ class Agent:
                                 current_count += 1
                                 
                                 # Print role change notification for debugging
-                                print(f"Turn {self.turn_counter}: Ship {ship_id} reassigned from {excess_role} to {role}")
+                                #print(f"Turn {self.turn_counter}: Ship {ship_id} reassigned from {excess_role} to {role}")
                                 
                                 break
                         
@@ -404,8 +405,7 @@ def get_defense_action(obs: dict, idx: int, home_planet: tuple) -> list[int]:
         if choice:
             return choice
 
-    target_occupation = 0 if home_planet[0] == 9 else 100
-    if ship[3] <= 30 or home_planet[2] != target_occupation:
+    if ship[3] <= 30:
         return return_home(ship, home_planet[0], home_planet[1])
 
     return move_randomly_around_home(obs, ship, home_planet[0], home_planet[1])
