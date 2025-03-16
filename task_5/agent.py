@@ -202,7 +202,6 @@ class Agent:
             # Count the current distribution of roles
             current_role = self.ship_roles[ship_id]
             role_counts[current_role] = role_counts.get(current_role, 0) + 1
-            print(role_counts)
         
         # Step 2: Dynamic role reassignment based on game conditions
         
@@ -451,9 +450,7 @@ def get_explore_action(obs: dict, idx: int, home_planet: tuple, agent) -> list[i
             
             # Initialize bump count
             agent.ship_bump_count[ship_id] = 0
-            
-            print(f"Ship {ship_id} assigned exploration pattern {explore_pattern}")
-        
+                    
         # Get the current directions for this ship
         ship_pattern = agent.ship_directions[ship_id]
         pattern_type = agent.ship_patterns[ship_id]
