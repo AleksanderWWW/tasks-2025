@@ -8,6 +8,25 @@ ROLE_EXPLORE = "explore"
 ROLE_ATTACK = "attack"
 ROLE_DEFEND = "defend"
 
+
+def with_emergency_return(func):
+    def inner(obs: dict, idx: int, home_planet: tuple, *args, **kwargs):
+        ship = obs["allied_ships_dict"][idx]
+        dx = abs(ship[1] - home_planet[0])
+        dy = abs(ship[2] - home_planet[1])
+
+        if dx + dy <= 100:
+            home_occupation = obs["planets_occupation"][0][2]
+            if home_planet[0] == 9 and home_occupation != 0:
+                return return_home(ship, home_planet[0], home_planet[1])
+
+            if home_planet[0] == 90 and home_occupation != 100:
+                return return_home(ship, home_planet[0], home_planet[1])
+
+        return func(obs, idx, home_planet, *args, **kwargs)
+
+    return inner
+
 class Agent:
 
     def load(self, abs_path: str):
@@ -211,7 +230,7 @@ class Agent:
                 ROLE_DEFEND: max(0, int(total_ships * 0))    # 0% defenders
             }
         # Mid game strategy
-        elif 250 <= self.turn_counter < 500:
+        elif 250 <= self.turn_counter < 750:
             target_distribution = {
                 ROLE_EXPLORE: max(0, int(total_ships * 1.0)),  # 30% explorers
                 ROLE_ATTACK: max(1, int(total_ships * 0)),   # 40% attackers
@@ -277,6 +296,7 @@ class Agent:
             if ship_id not in ship_ids:
                 del self.ship_roles[ship_id]
 
+@with_emergency_return
 def get_offense_action(obs: dict, idx: int, enemy_planet: tuple) -> list[int]:
     ship = obs["allied_ships_dict"][idx]
     ship_id, ship_x, ship_y = ship[0], ship[1], ship[2]
@@ -321,6 +341,7 @@ def get_offense_action(obs: dict, idx: int, enemy_planet: tuple) -> list[int]:
     
     return [ship_id, 0, direction, speed]
 
+@with_emergency_return
 def get_explore_action(obs: dict, idx: int, home_planet: tuple, agent) -> list[int]:
     """
     Function to explore the map with three distinct exploration patterns:
@@ -511,6 +532,7 @@ def get_explore_action(obs: dict, idx: int, home_planet: tuple, agent) -> list[i
                 return [ship[0], 0, 1, min(3, abs(dy))]  # Move down
 
 
+@with_emergency_return
 def get_defense_action(obs: dict, idx: int, home_planet: tuple) -> list[int]:
     ship = obs["allied_ships_dict"][idx]
 
@@ -519,12 +541,10 @@ def get_defense_action(obs: dict, idx: int, home_planet: tuple) -> list[int]:
         if choice:
             return choice
 
-    target_occupation = 0 if home_planet[0] == 9 else 100
-    if ship[3] <= 30 or home_planet[2] != target_occupation:
+    if ship[3] <= 30:
         return return_home(ship, home_planet[0], home_planet[1])
 
     return move_randomly_around_home(obs, ship, home_planet[0], home_planet[1])
-
 
 
 def shoot_enemy_if_in_range(enemy, ship) -> list[int]:
