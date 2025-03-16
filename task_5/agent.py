@@ -8,6 +8,21 @@ ROLE_EXPLORE = "explore"
 ROLE_ATTACK = "attack"
 ROLE_DEFEND = "defend"
 
+
+def with_emergency_return(func):
+    def inner(obs: dict, idx: int, home_planet: tuple, *args, **kwargs):
+        ship = obs["allied_ships"][idx]
+        if home_planet[0] == 9 and home_planet[2] != 0:
+            return return_home(ship, home_planet[0], home_planet[1])
+
+        if home_planet[0] == 90 and home_planet[2] != 100:
+            return return_home(ship, home_planet[0], home_planet[1])
+
+        return func(obs, idx, home_planet, *args, **kwargs)
+
+    return inner
+
+
 class Agent:
 
     def load(self, abs_path: str):
@@ -129,7 +144,7 @@ class Agent:
             elif role == ROLE_EXPLORE:
                 action_list.append(get_explore_action(obs, ship_id, self.home_planet))
             elif role == ROLE_ATTACK:
-                action_list.append(get_offense_action(obs, ship_id, self.enemy_planet))
+                action_list.append(get_offense_action(obs, ship_id, self.home_planet, self.enemy_planet))
             else:
                 # This should never happen if scheduler is working correctly
                 print(f"Warning: Ship {ship_id} has unknown role: {role}. Defaulting to explorer.")
@@ -272,7 +287,9 @@ class Agent:
             if ship_id not in ship_ids:
                 del self.ship_roles[ship_id]
 
-def get_offense_action(obs: dict, idx: int, enemy_planet: tuple) -> list[int]:
+
+@with_emergency_return
+def get_offense_action(obs: dict, idx: int, home_planet: tuple, enemy_planet: tuple) -> list[int]:
     ship = obs["allied_ships_dict"][idx]
     ship_id, ship_x, ship_y = ship[0], ship[1], ship[2]
     enemy_x, enemy_y = enemy_planet[0], enemy_planet[1]
@@ -316,6 +333,8 @@ def get_offense_action(obs: dict, idx: int, enemy_planet: tuple) -> list[int]:
     
     return [ship_id, 0, direction, speed]
 
+
+@with_emergency_return
 def get_explore_action(obs: dict, idx: int, home_planet: tuple, ) -> list[int]:
     """
     Function to explore the map looking for neutral planets to capture.
@@ -376,6 +395,7 @@ def get_explore_action(obs: dict, idx: int, home_planet: tuple, ) -> list[int]:
                 return [ship[0], 0, 1, min(3, abs(dy))]  # Move down
 
 
+@with_emergency_return
 def get_defense_action(obs: dict, idx: int, home_planet: tuple) -> list[int]:
     ship = obs["allied_ships_dict"][idx]
 
