@@ -338,6 +338,7 @@ def get_offense_action(obs: dict, idx: int, home_planet: tuple, enemy_planet: tu
     
     return [ship_id, 0, direction, speed]
 
+@with_emergency_return
 def get_explore_action(obs: dict, idx: int, home_planet: tuple) -> list[int]:
     """
     Function to explore the map looking for neutral planets to capture.
