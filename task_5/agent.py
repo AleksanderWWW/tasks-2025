@@ -33,6 +33,11 @@ class Agent:
         self.turn_counter = 0
         self.last_known_enemy_positions = {}
         self.planet_targets = {}  # Track which neutral planets are being targeted
+        
+        # Track explorer ship behavior
+        self.ship_bump_count = {}  # Track border bumps for each ship
+        self.ship_directions = {}  # Current movement directions for each ship
+        self.explore_direction_counter = 0  # Counter for assigning exploration directions
 
     def get_action(self, obs: dict) -> dict:
         """
@@ -127,13 +132,13 @@ class Agent:
             if role == ROLE_DEFEND:
                 action_list.append(get_defense_action(obs, ship_id, self.home_planet))
             elif role == ROLE_EXPLORE:
-                action_list.append(get_explore_action(obs, ship_id, self.home_planet))
+                action_list.append(get_explore_action(obs, ship_id, self.home_planet, self))
             elif role == ROLE_ATTACK:
                 action_list.append(get_offense_action(obs, ship_id, self.enemy_planet))
             else:
                 # This should never happen if scheduler is working correctly
                 print(f"Warning: Ship {ship_id} has unknown role: {role}. Defaulting to explorer.")
-                action_list.append(get_explore_action(obs, ship_id, self.home_planet))
+                action_list.append(get_explore_action(obs, ship_id, self.home_planet, self))
 
         return {
             "ships_actions": action_list,
@@ -208,16 +213,16 @@ class Agent:
         # Mid game strategy
         elif 250 <= self.turn_counter < 500:
             target_distribution = {
-                ROLE_EXPLORE: max(0, int(total_ships * 0)),  # 30% explorers
-                ROLE_ATTACK: max(1, int(total_ships * 1.0)),   # 40% attackers
+                ROLE_EXPLORE: max(0, int(total_ships * 1.0)),  # 30% explorers
+                ROLE_ATTACK: max(1, int(total_ships * 0)),   # 40% attackers
                 ROLE_DEFEND: max(0, int(total_ships * 0))    # 30% defenders
             }
         # Late game strategy
         else:
             target_distribution = {
-                ROLE_EXPLORE: max(1, int(total_ships * 0.5)),  # 20% explorers
-                ROLE_ATTACK: max(0, int(total_ships * 0)),   # 50% attackers
-                ROLE_DEFEND: max(1, int(total_ships * 0.5))    # 30% defenders
+                ROLE_EXPLORE: max(1, int(total_ships * 0)),  # 20% explorers
+                ROLE_ATTACK: max(0, int(total_ships * 1.0)),   # 50% attackers
+                ROLE_DEFEND: max(1, int(total_ships * 0))    # 30% defenders
             }
         
         # Adjust for enemy presence near home base
@@ -316,16 +321,21 @@ def get_offense_action(obs: dict, idx: int, enemy_planet: tuple) -> list[int]:
     
     return [ship_id, 0, direction, speed]
 
-def get_explore_action(obs: dict, idx: int, home_planet: tuple, ) -> list[int]:
+def get_explore_action(obs: dict, idx: int, home_planet: tuple, agent) -> list[int]:
     """
-    Function to explore the map looking for neutral planets to capture.
-    Searches for clusters of valuable tiles and moves toward them.
-    If none found, moves in a direction away from home planet.
+    Function to explore the map with three distinct exploration patterns:
+    1. Mainly horizontal with slight vertical (mainly left/right with slight up/down)
+    2. Mainly vertical with slight horizontal (mainly up/down with slight left/right)
+    3. Diagonal (equal horizontal and vertical)
+    
+    Ships are assigned these patterns sequentially and will bounce off borders.
+    After two border bumps, ships change their role to attacker.
+    
+    The agent parameter provides access to the agent's state for tracking exploration patterns.
     """
     ship = obs["allied_ships_dict"][idx]
-    found = False
-    target_x, target_y = None, None
-    max_ones_count = -1
+    ship_id = ship[0]
+    ship_x, ship_y = ship[1], ship[2]
     
     # Only try to shoot if firing cooldown is 0
     if ship[4] == 0:  # ship[4] is firing_cooldown
@@ -334,12 +344,15 @@ def get_explore_action(obs: dict, idx: int, home_planet: tuple, ) -> list[int]:
             if choice:
                 return choice
 
-    # Look for clusters of valuable tiles (planets/resources)
+    # Look for valuable targets first (maintain this logic)
+    found = False
+    target_x, target_y = None, None
+    max_ones_count = -1
+    
+    # Search for valuable tiles
     for i in range(len(obs['map'])):
         for j in range(len(obs['map'][i])):
-            # Check if this is a valuable tile (indicated by specific bit patterns)
             if format(obs['map'][i][j], '08b')[-1] == '1' and format(obs['map'][i][j], '08b')[0:2] == '00':
-                # Count nearby valuable tiles to find clusters
                 ones_count = sum(
                     1 for x in range(max(0, i-3), min(len(obs['map']), i+3))
                     for y in range(max(0, j-3), min(len(obs['map'][i]), j+3))
@@ -351,13 +364,135 @@ def get_explore_action(obs: dict, idx: int, home_planet: tuple, ) -> list[int]:
                     found = True
 
     if not found:
-        # If no valuable targets found, move away from home planet
-        if home_planet[0] == 9:  # If home is at (9,9), move right or down
-            return [ship[0], 0, random.choice([0, 1]), 1]
-        else:  # If home is at (90,90), move left or up
-            return [ship[0], 0, random.choice([2, 3]), 1]
+        # Initialize pattern for this ship if not already set
+        if ship_id not in agent.ship_directions:
+            # Initialize ship_patterns dictionary if it doesn't exist
+            if not hasattr(agent, 'ship_patterns'):
+                agent.ship_patterns = {}
+                
+            # Assign exploration pattern sequentially - 0, 1, or 2
+            explore_pattern = agent.explore_direction_counter % 3
+            agent.explore_direction_counter += 1
+            
+            # Store the pattern type for this ship
+            agent.ship_patterns[ship_id] = explore_pattern
+                        
+            # Define the pattern based on starting position
+            if home_planet[0] == 9:  # Starting from (9,9)
+                # For 9,9 start, mirror the patterns (mainly right and slightly down, etc.)
+                if explore_pattern == 0:
+                    # Pattern 1: Mainly RIGHT with slight DOWN
+                    agent.ship_directions[ship_id] = {
+                        'primary': 0,  # Right
+                        'secondary': 1,  # Down
+                        'primary_weight': 4,  # 4 moves in primary direction
+                        'secondary_weight': 1  # 1 move in secondary direction
+                    }
+                elif explore_pattern == 1:
+                    # Pattern 2: Mainly DOWN with slight RIGHT
+                    agent.ship_directions[ship_id] = {
+                        'primary': 1,  # Down
+                        'secondary': 0,  # Right
+                        'primary_weight': 4,  # 4 moves in primary direction
+                        'secondary_weight': 1  # 1 move in secondary direction
+                    }
+                else:  # Pattern 3: Diagonal (equal RIGHT and DOWN)
+                    agent.ship_directions[ship_id] = {
+                        'primary': 0,  # Right
+                        'secondary': 1,  # Down
+                        'primary_weight': 1,  # Equal weight
+                        'secondary_weight': 1  # Equal weight
+                    }
+            else:  # Starting from (90,90)
+                if explore_pattern == 0:
+                    # Pattern 1: Mainly LEFT with slight UP
+                    agent.ship_directions[ship_id] = {
+                        'primary': 2,  # Left
+                        'secondary': 3,  # Up
+                        'primary_weight': 4,  # 4 moves in primary direction
+                        'secondary_weight': 1  # 1 move in secondary direction
+                    }
+                elif explore_pattern == 1:
+                    # Pattern 2: Mainly UP with slight LEFT
+                    agent.ship_directions[ship_id] = {
+                        'primary': 3,  # Up
+                        'secondary': 2,  # Left
+                        'primary_weight': 4,  # 4 moves in primary direction
+                        'secondary_weight': 1  # 1 move in secondary direction
+                    }
+                else:  # Pattern 3: Diagonal (equal LEFT and UP)
+                    agent.ship_directions[ship_id] = {
+                        'primary': 2,  # Left
+                        'secondary': 3,  # Up
+                        'primary_weight': 1,  # Equal weight
+                        'secondary_weight': 1  # Equal weight
+                    }
+            
+            # Initialize bump count
+            agent.ship_bump_count[ship_id] = 0
+            
+            print(f"Ship {ship_id} assigned exploration pattern {explore_pattern}")
         
-
+        # Get the current directions for this ship
+        ship_pattern = agent.ship_directions[ship_id]
+        pattern_type = agent.ship_patterns[ship_id]
+        
+        # Check if we're at a border and need to bump
+        hit_border = False
+        
+        # Check horizontal borders
+        if (ship_pattern['primary'] == 0 and ship_x >= 99) or (ship_pattern['primary'] == 2 and ship_x <= 0):
+            # Swap horizontal direction (0 <-> 2)
+            ship_pattern['primary'] = 2 if ship_pattern['primary'] == 0 else 0
+            hit_border = True
+        
+        if (ship_pattern['secondary'] == 0 and ship_x >= 99) or (ship_pattern['secondary'] == 2 and ship_x <= 0):
+            # Swap horizontal direction (0 <-> 2)
+            ship_pattern['secondary'] = 2 if ship_pattern['secondary'] == 0 else 0
+            hit_border = True
+            
+        # Check vertical borders
+        if (ship_pattern['primary'] == 1 and ship_y >= 99) or (ship_pattern['primary'] == 3 and ship_y <= 0):
+            # Swap vertical direction (1 <-> 3)
+            ship_pattern['primary'] = 3 if ship_pattern['primary'] == 1 else 1
+            hit_border = True
+        
+        if (ship_pattern['secondary'] == 1 and ship_y >= 99) or (ship_pattern['secondary'] == 3 and ship_y <= 0):
+            # Swap vertical direction (1 <-> 3)
+            ship_pattern['secondary'] = 3 if ship_pattern['secondary'] == 1 else 1
+            hit_border = True
+        
+        # If we hit a border, increment bump count
+        if hit_border:
+            agent.ship_bump_count[ship_id] = agent.ship_bump_count.get(ship_id, 0) + 1
+            print(f"Ship {ship_id} bumped a border! Bump count: {agent.ship_bump_count[ship_id]}")
+            
+            # If this is the second bump, change the ship's role
+            if agent.ship_bump_count[ship_id] >= 2:
+                # Change role to attacker
+                agent.ship_roles[ship_id] = ROLE_ATTACK
+                print(f"Ship {ship_id} changed role to ATTACKER after two bumps!")
+                # Return an attack action immediately
+                return get_offense_action(obs, idx, agent.enemy_planet)
+        
+        # Determine movement based on pattern weights and turn counter
+        primary_weight = ship_pattern['primary_weight']
+        secondary_weight = ship_pattern['secondary_weight']
+        total_weight = primary_weight + secondary_weight
+        
+        # Use a cycle based on weights to determine which direction to move
+        step_in_cycle = (agent.turn_counter + ship_id) % total_weight
+        
+        # Choose direction based on step in cycle
+        if step_in_cycle < primary_weight:
+            direction = ship_pattern['primary']
+        else:
+            direction = ship_pattern['secondary']
+        
+        # Calculate speed - move faster when no cooldown
+        speed = 1 if ship[5] > 0 else 3
+        
+        return [ship_id, 0, direction, speed]
     else:
         # Go towards the identified target
         # Note: The map coordinates and ship coordinates might be flipped (x,y vs y,x)
@@ -468,7 +603,7 @@ def move_randomly_around_home(obs : dict, ship, home_x, home_y, max_distance=15)
     return [ship[0], 0, direction, 1] 
 
 
-def return_home_on_low_hp(ship, home_x, home_y) -> list[int]:
+def return_home(ship, home_x, home_y) -> list[int]:
     dx = ship[1] - home_x
     dy = ship[2] - home_y
 
