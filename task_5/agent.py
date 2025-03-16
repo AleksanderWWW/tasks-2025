@@ -8,6 +8,26 @@ ROLE_EXPLORE = "explore"
 ROLE_ATTACK = "attack"
 ROLE_DEFEND = "defend"
 
+
+def with_emergency_return(func):
+    def inner(obs: dict, idx: int, home_planet: tuple, *args, **kwargs):
+        ship = obs["allied_ships_dict"][idx]
+        dx = abs(ship[1] - home_planet[0])
+        dy = abs(ship[2] - home_planet[1])
+
+        if dx + dy <= 100:
+            home_occupation = obs["planets_occupation"][0][2]
+            if home_planet[0] == 9 and home_occupation != 0:
+                return return_home(ship, home_planet[0], home_planet[1])
+
+            if home_planet[0] == 90 and home_occupation != 100:
+                return return_home(ship, home_planet[0], home_planet[1])
+
+        return func(obs, idx, home_planet, *args, **kwargs)
+
+    return inner
+
+
 class Agent:
 
     def load(self, abs_path: str):
@@ -129,7 +149,7 @@ class Agent:
             elif role == ROLE_EXPLORE:
                 action_list.append(get_explore_action(obs, ship_id, self.home_planet))
             elif role == ROLE_ATTACK:
-                action_list.append(get_offense_action(obs, ship_id, self.enemy_planet))
+                action_list.append(get_offense_action(obs, ship_id, self.home_planet, self.enemy_planet))
             else:
                 # This should never happen if scheduler is working correctly
                 print(f"Warning: Ship {ship_id} has unknown role: {role}. Defaulting to explorer.")
@@ -178,7 +198,7 @@ class Agent:
             # Count the current distribution of roles
             current_role = self.ship_roles[ship_id]
             role_counts[current_role] = role_counts.get(current_role, 0) + 1
-            print(role_counts)
+            # print(role_counts)
         
         # Step 2: Dynamic role reassignment based on game conditions
         
@@ -254,7 +274,7 @@ class Agent:
                                 current_count += 1
                                 
                                 # Print role change notification for debugging
-                                print(f"Turn {self.turn_counter}: Ship {ship_id} reassigned from {excess_role} to {role}")
+                                #print(f"Turn {self.turn_counter}: Ship {ship_id} reassigned from {excess_role} to {role}")
                                 
                                 break
                         
@@ -272,7 +292,9 @@ class Agent:
             if ship_id not in ship_ids:
                 del self.ship_roles[ship_id]
 
-def get_offense_action(obs: dict, idx: int, enemy_planet: tuple) -> list[int]:
+
+@with_emergency_return
+def get_offense_action(obs: dict, idx: int, home_planet: tuple, enemy_planet: tuple) -> list[int]:
     ship = obs["allied_ships_dict"][idx]
     ship_id, ship_x, ship_y = ship[0], ship[1], ship[2]
     enemy_x, enemy_y = enemy_planet[0], enemy_planet[1]
@@ -316,6 +338,8 @@ def get_offense_action(obs: dict, idx: int, enemy_planet: tuple) -> list[int]:
     
     return [ship_id, 0, direction, speed]
 
+
+@with_emergency_return
 def get_explore_action(obs: dict, idx: int, home_planet: tuple, recursion_depth=0) -> list[int]:
     """
     Function to explore the map looking for neutral planets to capture.
@@ -428,38 +452,8 @@ def get_explore_action(obs: dict, idx: int, home_planet: tuple, recursion_depth=
             else:
                 return [ship[0], 0, 1, min(3, abs(dy))]  # Move down
 
-    # If no valuable targets found, move away from home planet
-    if home_planet[0] == 9:  # If home is at (9,9), move right or down
-        return [ship[0], 0, markov_chain_choice([0, 1, 2, 3], home_planet), 1]
-    else:  # If home is at (90,90), move left or up
-        return [ship[0], 0, markov_chain_choice([0, 1, 2, 3], home_planet), 1]
 
-def markov_chain_choice(options, home_planet):
-    """
-    Select an option based on a Markov chain transition matrix.
-    Adjust probabilities based on the home planet position.
-    """
-    if home_planet[0] == 9:
-        # Higher probability to go left or up
-        transition_matrix = np.array([
-            [0.2, 0.65, 0, 0.15],  # Probabilities for state 0
-            [0.5, 0.25, 0.25, 0],  # Probabilities for state 1
-            [0, 0.7, 0.15, 0.15],  # Probabilities for state 2
-            [0.6, 0, 0.2, 0.2]   # Probabilities for state 3
-        ])
-    else:
-        # Higher probability to go right or down
-        transition_matrix = np.array([
-            [0.05, 0.25, 0, 0.7],  # Probabilities for state 0
-            [0.05, 0.25, 0.7, 0],  # Probabilities for state 1
-            [0, 0.1, 0.2, 0.7],  # Probabilities for state 2
-            [0.15, 0, 0.7, 0.15]   # Probabilities for state 3
-        ])
-
-    current_state = random.choice(range(len(options)))
-    next_state = np.random.choice(range(len(options)), p=transition_matrix[current_state])
-    return options[next_state]
-
+@with_emergency_return
 def get_defense_action(obs: dict, idx: int, home_planet: tuple) -> list[int]:
     ship = obs["allied_ships_dict"][idx]
 
@@ -468,8 +462,7 @@ def get_defense_action(obs: dict, idx: int, home_planet: tuple) -> list[int]:
         if choice:
             return choice
 
-    target_occupation = 0 if home_planet[0] == 9 else 100
-    if ship[3] <= 30 or home_planet[2] != target_occupation:
+    if ship[3] <= 30:
         return return_home(ship, home_planet[0], home_planet[1])
 
     return move_randomly_around_home(obs, ship, home_planet[0], home_planet[1])
