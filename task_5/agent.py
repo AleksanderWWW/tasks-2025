@@ -202,19 +202,6 @@ class Agent:
             current_role = self.ship_roles[ship_id]
             role_counts[current_role] = role_counts.get(current_role, 0) + 1
         
-        # Step 2: Dynamic role reassignment based on game conditions
-        
-        # Check for nearby enemy ships that might require more defenders
-        # enemy_near_home = False
-        # if enemy_ships and self.home_planet:
-        #     home_x, home_y = self.home_planet[0], self.home_planet[1]
-        #     for enemy in enemy_ships:
-        #         enemy_x, enemy_y = enemy[1], enemy[2]
-        #         distance_to_home = abs(enemy_x - home_x) + abs(enemy_y - home_y)
-        #         if distance_to_home < 20:  # Threshold distance to be considered "near"
-        #             enemy_near_home = True
-        #             break
-        
         # # Get the total number of ships
         total_ships = len(allied_ships)
         
@@ -223,16 +210,16 @@ class Agent:
         # Early game strategy (first 50 turns)
         if self.turn_counter < 250:
             target_distribution = {
-                ROLE_EXPLORE: max(1, int(total_ships * 1.0)),  # 0% explorers
+                ROLE_EXPLORE: max(1, int(total_ships * 0.8)),  # 0% explorers
                 ROLE_ATTACK: max(0, int(total_ships * 0)),   # 0% attackers
-                ROLE_DEFEND: max(0, int(total_ships * 0))    # 0% defenders
+                ROLE_DEFEND: max(0, int(total_ships * 0.2))    # 0% defenders
             }
         # Mid game strategy
         elif 250 <= self.turn_counter < 750:
             target_distribution = {
-                ROLE_EXPLORE: max(0, int(total_ships * 1.0)),  # 30% explorers
+                ROLE_EXPLORE: max(0, int(total_ships * 0.8)),  # 30% explorers
                 ROLE_ATTACK: max(1, int(total_ships * 0)),   # 40% attackers
-                ROLE_DEFEND: max(0, int(total_ships * 0))    # 30% defenders
+                ROLE_DEFEND: max(0, int(total_ships * 0.2))    # 30% defenders
             }
         # Late game strategy
         else:
