@@ -12,12 +12,16 @@ ROLE_DEFEND = "defend"
 def with_emergency_return(func):
     def inner(obs: dict, idx: int, home_planet: tuple, *args, **kwargs):
         ship = obs["allied_ships_dict"][idx]
-        home_occupation = obs["planets_occupation"][0][2]
-        if home_planet[0] == 9 and home_occupation != 0:
-            return return_home(ship, home_planet[0], home_planet[1])
+        dx = abs(ship[1] - home_planet[0])
+        dy = abs(ship[2] - home_planet[1])
 
-        if home_planet[0] == 90 and home_occupation != 100:
-            return return_home(ship, home_planet[0], home_planet[1])
+        if dx + dy <= 100:
+            home_occupation = obs["planets_occupation"][0][2]
+            if home_planet[0] == 9 and home_occupation != 0:
+                return return_home(ship, home_planet[0], home_planet[1])
+
+            if home_planet[0] == 90 and home_occupation != 100:
+                return return_home(ship, home_planet[0], home_planet[1])
 
         return func(obs, idx, home_planet, *args, **kwargs)
 
