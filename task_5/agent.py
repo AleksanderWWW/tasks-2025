@@ -167,9 +167,9 @@ class Agent:
             # Check if the ship already has a role
             if ship_id not in self.ship_roles:
                 # Assign initial role based on ID (for compatibility with original logic)
-                if ship_id % 3 == 2:
+                if ship_id % 3 == 20:
                     self.ship_roles[ship_id] = ROLE_DEFEND
-                elif ship_id % 3 == 0:
+                elif ship_id:
                     self.ship_roles[ship_id] = ROLE_EXPLORE
                 else:
                     self.ship_roles[ship_id] = ROLE_ATTACK
@@ -199,7 +199,7 @@ class Agent:
         # Step 3: Balance roles based on game state
         
         # Early game strategy (first 50 turns)
-        if self.turn_counter < 250:
+        if self.turn_counter < 2500:
             target_distribution = {
                 ROLE_EXPLORE: max(1, int(total_ships * 1.0)),  # 0% explorers
                 ROLE_ATTACK: max(0, int(total_ships * 0)),   # 0% attackers
@@ -316,17 +316,17 @@ def get_offense_action(obs: dict, idx: int, enemy_planet: tuple) -> list[int]:
     
     return [ship_id, 0, direction, speed]
 
-def get_explore_action(obs: dict, idx: int, home_planet: tuple, ) -> list[int]:
+def get_explore_action(obs: dict, idx: int, home_planet: tuple, recursion_depth=0) -> list[int]:
     """
     Function to explore the map looking for neutral planets to capture.
-    Searches for clusters of valuable tiles and moves toward them.
-    If none found, moves in a direction away from home planet.
+    Divides the map into regions and assigns ships to explore those regions.
+    If a ship finds a planet, assigns a nearby ship to assist in searching that region more thoroughly.
     """
     ship = obs["allied_ships_dict"][idx]
     found = False
     target_x, target_y = None, None
     max_ones_count = -1
-    
+
     # Only try to shoot if firing cooldown is 0
     if ship[4] == 0:  # ship[4] is firing_cooldown
         for enemy in obs["enemy_ships"]:
@@ -334,35 +334,32 @@ def get_explore_action(obs: dict, idx: int, home_planet: tuple, ) -> list[int]:
             if choice:
                 return choice
 
-    # Look for clusters of valuable tiles (planets/resources)
-    for i in range(len(obs['map'])):
-        for j in range(len(obs['map'][i])):
+    # Partition the map into 25x25 regions
+    region_size = 25
+    regions = [(x, y) for x in range(0, 100, region_size) for y in range(0, 100, region_size)]
+    regions.remove((0, 0))  # Remove top-left corner
+    regions.remove((75, 75))  # Remove bottom-right corner
+
+    # Look for clusters of valuable tiles (planets/resources) within the assigned region
+    for i in range(100):
+        for j in range(100):
             # Check if this is a valuable tile (indicated by specific bit patterns)
             if format(obs['map'][i][j], '08b')[-1] == '1' and format(obs['map'][i][j], '08b')[0:2] == '00':
                 # Count nearby valuable tiles to find clusters
                 ones_count = sum(
-                    1 for x in range(max(0, i-3), min(len(obs['map']), i+3))
-                    for y in range(max(0, j-3), min(len(obs['map'][i]), j+3))
+                    1 for x in range(max(0, i-5), min(len(obs['map']), i+5))
+                    for y in range(max(0, j-5), min(len(obs['map'][i]), j+5))
                     if format(obs['map'][x][y], '08b')[-1] == '1' and format(obs['map'][x][y], '08b')[0:2] == '00'
                 )
                 if ones_count > max_ones_count:
                     max_ones_count = ones_count
-                    target_x, target_y = i, j
+                    target_x, target_y = j, i
                     found = True
 
-    if not found:
-        # If no valuable targets found, move away from home planet
-        if home_planet[0] == 9:  # If home is at (9,9), move right or down
-            return [ship[0], 0, random.choice([0, 1]), 1]
-        else:  # If home is at (90,90), move left or up
-            return [ship[0], 0, random.choice([2, 3]), 1]
-        
-
-    else:
-        # Go towards the identified target
-        # Note: The map coordinates and ship coordinates might be flipped (x,y vs y,x)
-        dx = ship[1] - target_y  # X distance (ship x - target y)
-        dy = ship[2] - target_x  # Y distance (ship y - target x)
+    # Go towards the identified target
+    if found:
+        dx = ship[1] - target_x  # X distance (ship x - target y)
+        dy = ship[2] - target_y  # Y distance (ship y - target x)
 
         if abs(dx) > abs(dy):
             if dx > 0:
@@ -375,6 +372,93 @@ def get_explore_action(obs: dict, idx: int, home_planet: tuple, ) -> list[int]:
             else:
                 return [ship[0], 0, 1, min(3, abs(dy))]  # Move down
 
+    # Determine the current region of the ship
+    current_region_x = (ship[1] // region_size) * region_size
+    current_region_y = (ship[2] // region_size) * region_size
+
+    # Explore the current region first
+    region_x, region_y = current_region_x, current_region_y
+    region_x_end = min(region_x + region_size, 100)
+    region_y_end = min(region_y + region_size, 100)
+
+    # Check if the region has less than 20% valuable tiles
+    non_valuable_count = sum(
+        1 for i in range(region_y, region_y_end)
+        for j in range(region_x, region_x_end)
+        if obs['map'][i][j] == -1
+    )
+
+    total_tiles = (region_x_end - region_x) * (region_y_end - region_y)
+    if non_valuable_count / total_tiles < 0.2:
+        # If no valuable targets found, move away from home planet
+        if home_planet[0] == 9:  # If home is at (9,9), move right or down
+            return [ship[0], 0, markov_chain_choice([0, 1, 2, 3], home_planet), 1]
+        else:  # If home is at (90,90), move left or up
+            return [ship[0], 0, markov_chain_choice([0, 1, 2, 3], home_planet), 1]
+
+    # Look for clusters of valuable tiles (planets/resources) within the assigned region
+    for i in range(region_y, region_y_end):
+        for j in range(region_x, region_x_end):
+            # Check if this is a valuable tile (indicated by specific bit patterns)
+            if format(obs['map'][i][j], '08b')[-1] == '1' and format(obs['map'][i][j], '08b')[0:2] == '00':
+                # Count nearby valuable tiles to find clusters
+                ones_count = sum(
+                    1 for x in range(max(0, i-5), min(len(obs['map']), i+5))
+                    for y in range(max(0, j-5), min(len(obs['map'][i]), j+5))
+                    if format(obs['map'][x][y], '08b')[-1] == '1' and format(obs['map'][x][y], '08b')[0:2] == '00'
+                )
+                if ones_count > max_ones_count:
+                    max_ones_count = ones_count
+                    target_x, target_y = j, i
+                    found = True
+
+    if found:
+        # Go towards the identified target
+        dx = ship[1] - target_x  # X distance (ship x - target y)
+        dy = ship[2] - target_y  # Y distance (ship y - target x)
+
+        if abs(dx) > abs(dy):
+            if dx > 0:
+                return [ship[0], 0, 2, min(3, abs(dx))]  # Move left
+            else:
+                return [ship[0], 0, 0, min(3, abs(dx))]  # Move right
+        else:
+            if dy > 0:
+                return [ship[0], 0, 3, min(3, abs(dy))]  # Move up
+            else:
+                return [ship[0], 0, 1, min(3, abs(dy))]  # Move down
+
+    # If no valuable targets found, move away from home planet
+    if home_planet[0] == 9:  # If home is at (9,9), move right or down
+        return [ship[0], 0, markov_chain_choice([0, 1, 2, 3], home_planet), 1]
+    else:  # If home is at (90,90), move left or up
+        return [ship[0], 0, markov_chain_choice([0, 1, 2, 3], home_planet), 1]
+
+def markov_chain_choice(options, home_planet):
+    """
+    Select an option based on a Markov chain transition matrix.
+    Adjust probabilities based on the home planet position.
+    """
+    if home_planet[0] == 9:
+        # Higher probability to go left or up
+        transition_matrix = np.array([
+            [0.2, 0.65, 0, 0.15],  # Probabilities for state 0
+            [0.5, 0.25, 0.25, 0],  # Probabilities for state 1
+            [0, 0.7, 0.15, 0.15],  # Probabilities for state 2
+            [0.6, 0, 0.2, 0.2]   # Probabilities for state 3
+        ])
+    else:
+        # Higher probability to go right or down
+        transition_matrix = np.array([
+            [0.05, 0.25, 0, 0.7],  # Probabilities for state 0
+            [0.05, 0.25, 0.7, 0],  # Probabilities for state 1
+            [0, 0.1, 0.2, 0.7],  # Probabilities for state 2
+            [0.15, 0, 0.7, 0.15]   # Probabilities for state 3
+        ])
+
+    current_state = random.choice(range(len(options)))
+    next_state = np.random.choice(range(len(options)), p=transition_matrix[current_state])
+    return options[next_state]
 
 def get_defense_action(obs: dict, idx: int, home_planet: tuple) -> list[int]:
     ship = obs["allied_ships_dict"][idx]
