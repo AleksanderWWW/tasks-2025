@@ -156,7 +156,6 @@ class Agent:
                 action_list.append(get_offense_action(obs, ship_id, self.enemy_planet))
             else:
                 # This should never happen if scheduler is working correctly
-                print(f"Warning: Ship {ship_id} has unknown role: {role}. Defaulting to explorer.")
                 action_list.append(get_explore_action(obs, ship_id, self.home_planet, self))
 
         return {
@@ -274,11 +273,7 @@ class Agent:
                                 self.ship_roles[ship_id] = role
                                 role_counts[excess_role] -= 1
                                 role_counts[role] += 1
-                                current_count += 1
-                                
-                                # Print role change notification for debugging
-                                print(f"Turn {self.turn_counter}: Ship {ship_id} reassigned from {excess_role} to {role}")
-                                
+                                current_count += 1                                
                                 break
                         
                         # If we've reached the target, break out
@@ -380,7 +375,7 @@ def get_explore_action(obs: dict, idx: int, home_planet: tuple, agent) -> list[i
                 )
                 if ones_count > max_ones_count:
                     max_ones_count = ones_count
-                    target_x, target_y = i, j
+                    target_x, target_y = j, i
                     found = True
 
     if not found:
@@ -483,13 +478,11 @@ def get_explore_action(obs: dict, idx: int, home_planet: tuple, agent) -> list[i
         # If we hit a border, increment bump count
         if hit_border:
             agent.ship_bump_count[ship_id] = agent.ship_bump_count.get(ship_id, 0) + 1
-            print(f"Ship {ship_id} bumped a border! Bump count: {agent.ship_bump_count[ship_id]}")
             
             # If this is the second bump, change the ship's role
             if agent.ship_bump_count[ship_id] >= 2:
                 # Change role to attacker
                 agent.ship_roles[ship_id] = ROLE_ATTACK
-                print(f"Ship {ship_id} changed role to ATTACKER after two bumps!")
                 # Return an attack action immediately
                 return get_offense_action(obs, idx, agent.enemy_planet)
         
@@ -514,8 +507,8 @@ def get_explore_action(obs: dict, idx: int, home_planet: tuple, agent) -> list[i
     else:
         # Go towards the identified target
         # Note: The map coordinates and ship coordinates might be flipped (x,y vs y,x)
-        dx = ship[1] - target_y  # X distance (ship x - target y)
-        dy = ship[2] - target_x  # Y distance (ship y - target x)
+        dx = ship[1] - random.choice([target_x +2, target_x-2])  # X distance (ship x - target y)
+        dy = ship[2] - random.choice([target_y +2, target_y-2])  # Y distance (ship y - target x)
 
         if abs(dx) > abs(dy):
             if dx > 0:
